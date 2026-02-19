@@ -1,0 +1,147 @@
+# Revenue Integrity Anomaly Detection System
+# Configuration File
+# ==================================================
+
+# Detection Configuration
+detection:
+  # Number of hours to look back for baseline calculation
+  baseline_periods: 168  # 7 days
+  
+  # Detection window size in hours
+  window_hours: 1
+  
+  # Z-score thresholds
+  zscore:
+    warning_threshold: 2.0
+    critical_threshold: 3.0
+  
+  # IQR multipliers
+  iqr:
+    warning_multiplier: 1.5
+    critical_multiplier: 3.0
+
+# Slack Alert Routing Configuration
+slack:
+  # Default channel for all alerts (uses SLACK_WEBHOOK_URL env var)
+  default_channel: true
+  
+  # Channel routing by severity
+  routing:
+    critical:
+      # Webhook URL environment variable name for critical alerts
+      webhook_env: SLACK_WEBHOOK_CRITICAL
+      # Channel name (for documentation)
+      channel: "#revenue-alerts"
+      # Mention @here for critical alerts
+      mention: "@here"
+      # Include in default channel as well
+      also_default: true
+    
+    warning:
+      # Webhook URL environment variable name for warning alerts
+      webhook_env: SLACK_WEBHOOK_WARNING
+      # Channel name (for documentation)
+      channel: "#data-quality"
+      # No mention for warnings
+      mention: ""
+      also_default: false
+    
+    info:
+      # Info alerts only go to default channel
+      webhook_env: ""
+      channel: ""
+      mention: ""
+      also_default: true
+  
+  # Rate limiting
+  rate_limit:
+    # Minimum seconds between alerts to same channel
+    min_interval_seconds: 300
+  
+  # Message formatting
+  formatting:
+    # Maximum incidents to show in one message
+    max_incidents: 5
+    # Include root cause hints
+    include_hints: true
+    # Include GitHub Actions link
+    include_github_link: true
+
+# Alert Suppression Configuration
+suppression:
+  # Cooldown period in hours - don't re-alert for same incident
+  cooldown_hours: 4
+  
+  # Auto-resolve incidents with no new detections after this many hours
+  auto_resolve_hours: 24
+  
+  # Group similar incidents
+  grouping:
+    enabled: true
+    # Time window for grouping (minutes)
+    window_minutes: 60
+
+# Metric Categories for routing
+metric_routing:
+  # Revenue metrics get special handling
+  revenue:
+    metrics:
+      - gross_revenue
+      - order_count
+      - avg_order_value
+      - revenue_per_session
+    # Lower threshold for drops (more sensitive)
+    drop_threshold_multiplier: 0.75
+    # Always critical for revenue drops > 50%
+    critical_drop_threshold: 50
+  
+  # Conversion metrics
+  conversion:
+    metrics:
+      - checkout_completion_rate
+      - checkout_to_purchase_rate
+      - session_conversion_rate
+      - payment_success_rate
+    # Standard thresholds
+    drop_threshold_multiplier: 1.0
+  
+  # Engagement metrics
+  engagement:
+    metrics:
+      - unique_users
+      - unique_sessions
+      - page_views
+    # Less sensitive
+    drop_threshold_multiplier: 1.25
+
+# Observability Configuration
+observability:
+  # Health check settings
+  health_check:
+    # Alert if no successful run in this many minutes
+    max_run_gap_minutes: 30
+    # Webhook for health alerts (uses default if not set)
+    webhook_env: SLACK_WEBHOOK_HEALTH
+  
+  # Metrics to export (future: Prometheus, DataDog, etc.)
+  metrics_export:
+    enabled: false
+    endpoint: ""
+
+# Database Configuration
+database:
+  # Connection string from environment
+  url_env: DATABASE_URL
+  # Connection pool settings
+  pool:
+    min_connections: 1
+    max_connections: 5
+  # Retention settings
+  retention:
+    # Keep anomalies for this many days
+    anomalies_days: 30
+    # Keep baselines for this many days
+    baselines_days: 14
+    # Keep run records for this many days
+    runs_days: 90
+
