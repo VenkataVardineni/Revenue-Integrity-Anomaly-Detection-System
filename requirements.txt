@@ -1,0 +1,22 @@
+# Revenue Integrity Anomaly Detection System
+# Python dependencies
+
+# Database
+psycopg2-binary>=2.9.9
+
+# HTTP requests (for Slack webhook)
+requests>=2.31.0
+
+# Data processing
+pandas>=2.1.0
+
+# Configuration
+python-dotenv>=1.0.0
+PyYAML>=6.0.1
+
+# CLI utilities
+click>=8.1.7
+
+# Date/time handling
+python-dateutil>=2.8.2
+
