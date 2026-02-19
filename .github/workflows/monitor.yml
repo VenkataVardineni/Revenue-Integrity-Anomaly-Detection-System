@@ -1,0 +1,214 @@
+name: Revenue Integrity Monitor
+
+on:
+  # Schedule: Run every 15 minutes
+  schedule:
+    - cron: '*/15 * * * *'
+  
+  # Manual trigger with inputs
+  workflow_dispatch:
+    inputs:
+      window_hours:
+        description: 'Detection window in hours'
+        required: false
+        default: '1'
+        type: string
+      baseline_periods:
+        description: 'Baseline periods (hours)'
+        required: false
+        default: '168'
+        type: string
+      skip_slack:
+        description: 'Skip Slack notification'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  monitor:
+    name: Run Anomaly Detection
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: revenue_integrity
+          POSTGRES_USER: analyst
+          POSTGRES_PASSWORD: analyst_secure_pw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U analyst -d revenue_integrity"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U analyst; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready!"
+      
+      - name: Initialize database schema
+        env:
+          DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+        run: |
+          python src/extract.py --init-schema
+      
+      - name: Generate seed data (for testing)
+        env:
+          DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+        run: |
+          python src/seed.py
+      
+      - name: Run detection pipeline
+        id: detect
+        env:
+          DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+        run: |
+          # Get inputs or defaults
+          WINDOW_HOURS="${{ github.event.inputs.window_hours || '1' }}"
+          BASELINE_PERIODS="${{ github.event.inputs.baseline_periods || '168' }}"
+          
+          # Run detection and capture output
+          python -c "
+          import json
+          from src.detect import AnomalyDetector
+          
+          with AnomalyDetector() as detector:
+              result = detector.run_full_pipeline(
+                  baseline_periods=int('${BASELINE_PERIODS}')
+              )
+              
+              # Get incidents
+              incidents = detector.get_active_incidents()
+              
+              # Output for GitHub Actions
+              print(f'::set-output name=run_id::{result[\"run_id\"]}')
+              print(f'::set-output name=total_anomalies::{result[\"total_anomalies\"]}')
+              print(f'::set-output name=new_incidents::{len(incidents)}')
+              
+              # Determine if we should alert
+              critical_count = sum(1 for i in incidents if i.get('severity') == 'critical')
+              warning_count = sum(1 for i in incidents if i.get('severity') == 'warning')
+              
+              print(f'::set-output name=critical_count::{critical_count}')
+              print(f'::set-output name=warning_count::{warning_count}')
+              print(f'::set-output name=should_alert::{\"true\" if critical_count > 0 or warning_count > 0 else \"false\"}')
+              
+              # Save incidents to file for artifact
+              with open('incidents.json', 'w') as f:
+                  json.dump(incidents, f, default=str, indent=2)
+          "
+      
+      - name: Generate report artifacts
+        env:
+          DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+        run: |
+          RUN_ID="${{ steps.detect.outputs.run_id }}"
+          python src/report.py --run-id "$RUN_ID"
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-report-${{ steps.detect.outputs.run_id }}
+          path: |
+            artifacts/
+            incidents.json
+          retention-days: 30
+      
+      - name: Send Slack alert
+        if: |
+          steps.detect.outputs.should_alert == 'true' && 
+          github.event.inputs.skip_slack != 'true' &&
+          env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+        run: |
+          RUN_ID="${{ steps.detect.outputs.run_id }}"
+          GITHUB_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          python -c "
+          import json
+          from src.slack import send_alert
+          
+          with open('incidents.json', 'r') as f:
+              incidents = json.load(f)
+          
+          send_alert(
+              run_id='${RUN_ID}',
+              incidents=incidents,
+              github_run_url='${GITHUB_RUN_URL}'
+          )
+          "
+      
+      - name: Output summary
+        run: |
+          echo "## Revenue Integrity Monitor Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | \`${{ steps.detect.outputs.run_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Anomalies | ${{ steps.detect.outputs.total_anomalies }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical Incidents | ${{ steps.detect.outputs.critical_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Warning Incidents | ${{ steps.detect.outputs.warning_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.detect.outputs.should_alert }}" == "true" ]; then
+            echo "### ⚠️ Alerts Detected" >> $GITHUB_STEP_SUMMARY
+            echo "Check the artifacts for detailed incident reports." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ No Alerts" >> $GITHUB_STEP_SUMMARY
+            echo "All metrics within normal ranges." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: monitor
+    if: failure()
+    
+    steps:
+      - name: Send failure notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "text": "❌ Revenue Integrity Monitor Failed",
+              "attachments": [{
+                "color": "#dc3545",
+                "blocks": [{
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "The monitoring pipeline failed to complete.\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Failed Run>"
+                  }
+                }]
+              }]
+            }'
+
