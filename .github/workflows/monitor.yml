@@ -86,41 +86,48 @@ jobs:
         id: detect
         env:
           DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
+          WINDOW_HOURS: ${{ github.event.inputs.window_hours || '1' }}
+          BASELINE_PERIODS: ${{ github.event.inputs.baseline_periods || '168' }}
         run: |
-          # Get inputs or defaults
-          WINDOW_HOURS="${{ github.event.inputs.window_hours || '1' }}"
-          BASELINE_PERIODS="${{ github.event.inputs.baseline_periods || '168' }}"
-          
-          # Run detection and capture output
-          python -c "
+          python << 'PY'
           import json
+          import os
+          from datetime import datetime, timedelta
+
           from src.detect import AnomalyDetector
-          
+
+          window_hours = int(os.environ.get("WINDOW_HOURS", "1"))
+          baseline_periods = int(os.environ.get("BASELINE_PERIODS", "168"))
+          window_end = datetime.now().replace(minute=0, second=0, microsecond=0)
+          window_start = window_end - timedelta(hours=window_hours)
+
+          def write_output(name: str, value: str) -> None:
+              out = os.environ["GITHUB_OUTPUT"]
+              with open(out, "a", encoding="utf-8") as fh:
+                  fh.write(f"{name}={value}\n")
+
           with AnomalyDetector() as detector:
               result = detector.run_full_pipeline(
-                  baseline_periods=int('${BASELINE_PERIODS}')
+                  window_start=window_start,
+                  window_end=window_end,
+                  baseline_periods=baseline_periods,
               )
-              
-              # Get incidents
               incidents = detector.get_active_incidents()
-              
-              # Output for GitHub Actions
-              print(f'::set-output name=run_id::{result[\"run_id\"]}')
-              print(f'::set-output name=total_anomalies::{result[\"total_anomalies\"]}')
-              print(f'::set-output name=new_incidents::{len(incidents)}')
-              
-              # Determine if we should alert
-              critical_count = sum(1 for i in incidents if i.get('severity') == 'critical')
-              warning_count = sum(1 for i in incidents if i.get('severity') == 'warning')
-              
-              print(f'::set-output name=critical_count::{critical_count}')
-              print(f'::set-output name=warning_count::{warning_count}')
-              print(f'::set-output name=should_alert::{\"true\" if critical_count > 0 or warning_count > 0 else \"false\"}')
-              
-              # Save incidents to file for artifact
-              with open('incidents.json', 'w') as f:
-                  json.dump(incidents, f, default=str, indent=2)
-          "
+
+          critical_count = sum(1 for i in incidents if i.get("severity") == "critical")
+          warning_count = sum(1 for i in incidents if i.get("severity") == "warning")
+          should_alert = "true" if (critical_count > 0 or warning_count > 0) else "false"
+
+          write_output("run_id", str(result["run_id"]))
+          write_output("total_anomalies", str(result["total_anomalies"]))
+          write_output("new_incidents", str(len(incidents)))
+          write_output("critical_count", str(critical_count))
+          write_output("warning_count", str(warning_count))
+          write_output("should_alert", should_alert)
+
+          with open("incidents.json", "w", encoding="utf-8") as f:
+              json.dump(incidents, f, default=str, indent=2)
+          PY
       
       - name: Generate report artifacts
         env:
@@ -140,9 +147,9 @@ jobs:
       
       - name: Send Slack alert
         if: |
-          steps.detect.outputs.should_alert == 'true' && 
-          github.event.inputs.skip_slack != 'true' &&
-          env.SLACK_WEBHOOK_URL != ''
+          steps.detect.outputs.should_alert == 'true' &&
+          (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_slack != true) &&
+          secrets.SLACK_WEBHOOK_URL != ''
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DATABASE_URL: postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity
@@ -183,32 +190,3 @@ jobs:
             echo "### ✅ No Alerts" >> $GITHUB_STEP_SUMMARY
             echo "All metrics within normal ranges." >> $GITHUB_STEP_SUMMARY
           fi
-
-  notify-failure:
-    name: Notify on Failure
-    runs-on: ubuntu-latest
-    needs: monitor
-    if: failure()
-    
-    steps:
-      - name: Send failure notification
-        if: env.SLACK_WEBHOOK_URL != ''
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d '{
-              "text": "❌ Revenue Integrity Monitor Failed",
-              "attachments": [{
-                "color": "#dc3545",
-                "blocks": [{
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "The monitoring pipeline failed to complete.\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Failed Run>"
-                  }
-                }]
-              }]
-            }'
-
