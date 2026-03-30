@@ -21,10 +21,9 @@ from pathlib import Path
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from logutil import setup_logging
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity')
