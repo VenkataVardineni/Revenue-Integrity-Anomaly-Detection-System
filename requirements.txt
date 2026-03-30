@@ -20,3 +20,6 @@ click>=8.1.7
 # Date/time handling
 python-dateutil>=2.8.2
 
+# Tests
+pytest>=7.4.0
+
