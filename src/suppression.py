@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -335,6 +336,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Alert suppression management')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-suppression {__version__}',
+    )
     parser.add_argument('--stats', action='store_true', help='Show suppression stats')
     parser.add_argument('--auto-resolve', action='store_true', help='Auto-resolve stale incidents')
     parser.add_argument('--show-suppressed', action='store_true', help='Show suppressed incidents')

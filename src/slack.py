@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -384,6 +385,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Test Slack integration')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-slack {__version__}',
+    )
     parser.add_argument('--test', action='store_true', help='Send test message')
     parser.add_argument('--message', type=str, help='Custom message to send')
     

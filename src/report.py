@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -429,6 +430,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Generate monitoring report')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-report {__version__}',
+    )
     parser.add_argument('--run-id', required=True, help='Run ID to generate report for')
     parser.add_argument('--slack-preview', action='store_true', help='Preview Slack message')
     

@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -290,6 +291,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Run anomaly detection')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-detect {__version__}',
+    )
     parser.add_argument('--window-hours', type=int, default=1)
     parser.add_argument('--baseline-periods', type=int, default=168)
     

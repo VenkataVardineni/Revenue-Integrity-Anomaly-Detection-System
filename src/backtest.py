@@ -21,6 +21,7 @@ import json
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -384,6 +385,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Run detector backtest')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-backtest {__version__}',
+    )
     parser.add_argument('--days', type=int, default=30, help='Days to backtest')
     parser.add_argument('--baseline', type=int, default=168, help='Baseline periods')
     parser.add_argument('--step', type=int, default=1, help='Step size in hours')

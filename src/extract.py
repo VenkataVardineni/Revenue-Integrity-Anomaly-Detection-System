@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -261,6 +262,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Revenue Integrity Detection Pipeline')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-extract {__version__}',
+    )
     parser.add_argument('--init-schema', action='store_true', help='Initialize database schema')
     parser.add_argument('--run', action='store_true', help='Run detection pipeline')
     parser.add_argument('--window-hours', type=int, default=1, help='Detection window in hours')

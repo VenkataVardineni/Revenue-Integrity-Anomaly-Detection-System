@@ -22,6 +22,7 @@ from slack import SlackClient
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -267,6 +268,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Test alert routing')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-routing {__version__}',
+    )
     parser.add_argument('--severity', choices=['critical', 'warning', 'info'], 
                        default='warning', help='Severity level to test')
     parser.add_argument('--show-config', action='store_true', help='Show routing config')

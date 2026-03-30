@@ -22,6 +22,7 @@ from pathlib import Path
 load_dotenv()
 
 from logutil import setup_logging
+from _version import __version__
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -353,6 +354,11 @@ def main():
     import json
     
     parser = argparse.ArgumentParser(description='Monitor health check')
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'revenue-integrity-health {__version__}',
+    )
     parser.add_argument('--json', action='store_true', help='Output as JSON')
     parser.add_argument('--alert', action='store_true', help='Send alert if unhealthy')
     parser.add_argument('--stats', action='store_true', help='Show run statistics')
