@@ -322,6 +322,26 @@ class ReportGenerator:
             'metrics_csv': metrics_csv,
             'report_md': report_md
         }
+
+    def export_run_summary_json(self, run_id: str) -> Path:
+        """Write run details, anomalies, and incidents to summary.json."""
+        run_details = self.get_run_details(run_id)
+        if not run_details:
+            raise ValueError(f"Run not found: {run_id}")
+        anomalies = self.get_anomalies(run_id)
+        incidents = self.get_incidents(run_id)
+        run_dir = self.create_run_directory(run_id)
+        filepath = run_dir / "summary.json"
+        payload = {
+            "run_id": run_id,
+            "run": run_details,
+            "anomalies": anomalies,
+            "incidents": incidents,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, default=str)
+        logger.info("Saved summary JSON to %s", filepath)
+        return filepath
     
     def build_slack_payload(
         self,
@@ -437,10 +457,20 @@ def main():
     )
     parser.add_argument('--run-id', required=True, help='Run ID to generate report for')
     parser.add_argument('--slack-preview', action='store_true', help='Preview Slack message')
+    parser.add_argument(
+        '--export-json',
+        action='store_true',
+        help='Write summary.json (run + anomalies + incidents) only',
+    )
     
     args = parser.parse_args()
     
     with ReportGenerator() as generator:
+        if args.export_json:
+            path = generator.export_run_summary_json(args.run_id)
+            print(path)
+            return
+
         # Generate artifacts
         artifacts = generator.generate_full_report(args.run_id)
         
