@@ -21,10 +21,9 @@ from slack import SlackClient
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from logutil import setup_logging
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / 'config.yaml'
