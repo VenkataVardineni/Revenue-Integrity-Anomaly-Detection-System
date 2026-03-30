@@ -26,6 +26,7 @@ load_dotenv()
 
 from logutil import setup_logging
 from _version import __version__
+from metrics_export import write_run_metrics_textfile
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -333,6 +334,7 @@ def main():
                 )
                 
                 if result:
+                    write_run_metrics_textfile(result)
                     print(f"\nRun ID: {result['run_id']}")
                     print(f"Total Anomalies: {result['total_anomalies']}")
                     print(f"New Incidents: {result['new_incidents']}")
