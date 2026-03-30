@@ -303,6 +303,11 @@ def main():
     parser.add_argument('--baseline-periods', type=int, default=168, help='Baseline periods (hours)')
     parser.add_argument('--show-incidents', action='store_true', help='Show active incidents')
     parser.add_argument(
+        '--json',
+        action='store_true',
+        help='With --run, print pipeline result as JSON to stdout',
+    )
+    parser.add_argument(
         '--retention-cleanup',
         action='store_true',
         help='Run apply_data_retention using config.yaml retention settings',
@@ -335,9 +340,12 @@ def main():
                 
                 if result:
                     write_run_metrics_textfile(result)
-                    print(f"\nRun ID: {result['run_id']}")
-                    print(f"Total Anomalies: {result['total_anomalies']}")
-                    print(f"New Incidents: {result['new_incidents']}")
+                    if args.json:
+                        print(json.dumps(result, indent=2, default=str))
+                    else:
+                        print(f"\nRun ID: {result['run_id']}")
+                        print(f"Total Anomalies: {result['total_anomalies']}")
+                        print(f"New Incidents: {result['new_incidents']}")
             
             if args.show_incidents:
                 incidents = get_active_incidents(conn)
