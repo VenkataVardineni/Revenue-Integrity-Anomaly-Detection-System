@@ -11,10 +11,12 @@ This module:
 
 import os
 import sys
+import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
+import yaml
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -31,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://analyst:analyst_secure_pw@localhost:5432/revenue_integrity')
 SQL_DIR = Path(__file__).parent.parent / 'sql'
+CONFIG_PATH = Path(__file__).parent.parent / 'config.yaml'
 
 # SQL files in execution order
 SQL_FILES = [
@@ -41,6 +44,7 @@ SQL_FILES = [
     '021_detectors_iqr.sql',
     '022_detectors_rules.sql',
     '030_anomaly_rollup.sql',
+    '040_retention.sql',
 ]
 
 
@@ -236,6 +240,31 @@ def get_metrics_snapshot(conn, window_start: datetime, window_end: datetime) -> 
         return [dict(row) for row in cur.fetchall()]
 
 
+def run_retention_cleanup(conn) -> Dict[str, Any]:
+    """Prune old rows using config.yaml database.retention (or defaults)."""
+    defaults = (30, 14, 90)
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            cfg = yaml.safe_load(f) or {}
+        ret = cfg.get('database', {}).get('retention', {})
+        a = int(ret.get('anomalies_days', defaults[0]))
+        b = int(ret.get('baselines_days', defaults[1]))
+        r = int(ret.get('runs_days', defaults[2]))
+    else:
+        a, b, r = defaults
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            'SELECT apply_data_retention(%s, %s, %s) AS result',
+            (a, b, r),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    result = dict(row['result']) if row and row.get('result') else {}
+    logger.info('Retention cleanup: %s', result)
+    return result
+
+
 def get_run_summary(conn, run_id: str) -> Dict[str, Any]:
     """Get summary of a monitoring run."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -272,6 +301,11 @@ def main():
     parser.add_argument('--window-hours', type=int, default=1, help='Detection window in hours')
     parser.add_argument('--baseline-periods', type=int, default=168, help='Baseline periods (hours)')
     parser.add_argument('--show-incidents', action='store_true', help='Show active incidents')
+    parser.add_argument(
+        '--retention-cleanup',
+        action='store_true',
+        help='Run apply_data_retention using config.yaml retention settings',
+    )
     
     args = parser.parse_args()
     
@@ -282,6 +316,10 @@ def main():
                     logger.error("Schema initialization failed")
                     sys.exit(1)
                 logger.info("Schema initialization completed")
+
+            if args.retention_cleanup:
+                summary = run_retention_cleanup(conn)
+                print(json.dumps(summary, indent=2, default=str))
             
             if args.run:
                 window_end = datetime.now().replace(minute=0, second=0, microsecond=0)
